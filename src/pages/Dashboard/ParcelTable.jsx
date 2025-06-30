@@ -15,7 +15,7 @@ import {
 const stripePromise = loadStripe("pk_test_51ReL6ZGfjBeKFWvxOedUv4QirG7FSlNnjsX4y2lOqemt0UxlH0pj3T2fcjnwBEdDaJ7OvoTpvcmgHrZIbKNQ68Wd00DG5yAx2y");
 
 // --- Payment Form Component ---
-const CheckoutForm = ({ amount, onClose }) => {
+const CheckoutForm = ({ amount, parcelId, onClose, onSuccess }) => {
   const stripe = useStripe();
   const elements = useElements();
 
@@ -47,6 +47,8 @@ const CheckoutForm = ({ amount, onClose }) => {
         setMessage(`Payment failed: ${confirmResult.error.message}`);
       } else if (confirmResult.paymentIntent.status === "succeeded") {
         setMessage("Payment succeeded! Thank you.");
+          await onSuccess(parcelId); // ✅ Call the payment handler
+
         setTimeout(() => {
           onClose(); // close modal after success
         }, 1500);
@@ -91,13 +93,28 @@ const ParcelTable = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
+
+  const handlePayment = async (parcelId) => {
+  try {
+    const res = await axios.put(`http://localhost:3000/parcels/${parcelId}/pay`);
+    if (res.data.message === "Payment successful & status updated") {
+      setParcels(prev => prev.filter(p => p._id !== parcelId)); // Remove from UI
+      Swal.fire("Success!", "Payment completed & moved to MyPayments.", "success");
+    }
+  } catch (err) {
+    console.error("❌ Payment update failed:", err);
+    Swal.fire("Error", "Failed to update payment status", "error");
+  }
+};
+
+
   useEffect(() => {
     fetchParcels();
   }, []);
 
   const fetchParcels = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/parcels");
+      const res = await axios.get("http://localhost:3000/unpaid-parcels");
       setParcels(res.data);
     } catch (error) {
       console.error("Failed to fetch parcels:", error);
@@ -304,8 +321,14 @@ const ParcelTable = () => {
               💳 Pay for Parcel: ৳{selectedParcel.deliveryCost || "N/A"}
             </h3>
             <Elements stripe={stripePromise}>
-              <CheckoutForm amount={selectedParcel.deliveryCost || 0} onClose={closePayment} />
-            </Elements>
+  <CheckoutForm
+    amount={selectedParcel.deliveryCost || 0}
+    parcelId={selectedParcel._id}         // ✅ Pass the ID
+    onClose={closePayment}
+    onSuccess={handlePayment}             // ✅ Pass handler
+  />
+</Elements>
+
           </div>
         </dialog>
       )}

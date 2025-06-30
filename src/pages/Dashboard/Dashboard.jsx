@@ -86,7 +86,7 @@ const DashboardLayout = () => {
           </li>
           <li>
             <NavLink
-              to="/dashboard/orders"
+              to="/dashboard/myPayments"
               className={({ isActive }) =>
                 `flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
                   isActive
