@@ -89,11 +89,14 @@ const AddParcelForm = () => {
 
     if (!confirm.isConfirmed) return;
 
-    const parcelData = {
-      ...data,
-      creation_date: new Date().toISOString(),
-      deliveryCost: totalCost,
-    };
+  const parcelData = {
+  ...data,
+  weight: data.parcelType === "document" ? 0 : weight,
+  deliveryCost: totalCost,
+  creation_date: new Date().toISOString(),
+  status: "Unpaid", // default status for payment tracking
+};
+
 
     try {
       const res = await axios.post("http://localhost:3000/addParcel", parcelData);

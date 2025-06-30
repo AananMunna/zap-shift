@@ -1,29 +1,166 @@
-import { FaInfoCircle, FaTrash, FaMoneyBill } from "react-icons/fa";
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import Swal from "sweetalert2";
+import { FaInfoCircle, FaTrash, FaMoneyBill, FaTimes } from "react-icons/fa";
 
-const ParcelTable = () => {
-  const parcels = [
-    {
-      id: "PCL-20250625-IBX0N",
-      title: "Ea laborum Rerum do",
-      type: "Non-Document",
-      sender: { name: "Barclay Humphrey", location: "Sylhet, Sunamganj" },
-      receiver: { name: "Sarah Reeves", location: "Barisal, Patuakhali" },
-      cost: 2830,
-      status: "Unpaid",
-    },
-    {
-      id: "PCL-20250625-6L8Y0",
-      title: "Voluptatum voluptate",
-      type: "Non-Document",
-      sender: { name: "Tamara Cooke", location: "Rajshahi, Bogura" },
-      receiver: { name: "Forrest Bridges", location: "Rangpur, Nilphamari" },
-      cost: 2670,
-      status: "Unpaid",
-    },
-  ];
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  CardElement,
+  Elements,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
+
+// Load your Stripe publishable key (replace with yours)
+const stripePromise = loadStripe("pk_test_51ReL6ZGfjBeKFWvxOedUv4QirG7FSlNnjsX4y2lOqemt0UxlH0pj3T2fcjnwBEdDaJ7OvoTpvcmgHrZIbKNQ68Wd00DG5yAx2y");
+
+// --- Payment Form Component ---
+const CheckoutForm = ({ amount, onClose }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      // Create payment intent on backend
+      const { data } = await axios.post(
+        "http://localhost:3000/create-payment-intent",
+        { amount: amount * 100 } // convert to smallest unit
+      );
+
+      const cardElement = elements.getElement(CardElement);
+
+      // Confirm payment on frontend
+      const confirmResult = await stripe.confirmCardPayment(data.clientSecret, {
+        payment_method: { card: cardElement },
+      });
+
+      if (confirmResult.error) {
+        setMessage(`Payment failed: ${confirmResult.error.message}`);
+      } else if (confirmResult.paymentIntent.status === "succeeded") {
+        setMessage("Payment succeeded! Thank you.");
+        setTimeout(() => {
+          onClose(); // close modal after success
+        }, 1500);
+      }
+    } catch (error) {
+      setMessage("Payment error. Try again.");
+      console.error(error);
+    }
+    setLoading(false);
+  };
 
   return (
-    <div className="overflow-x-auto w-full">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <CardElement
+        options={{
+          style: {
+            base: {
+              fontSize: "16px",
+              color: "#32325d",
+              "::placeholder": { color: "#a0aec0" },
+            },
+            invalid: { color: "#fa755a" },
+          },
+        }}
+      />
+      <button
+        type="submit"
+        disabled={!stripe || loading}
+        className="btn btn-primary w-full"
+      >
+        {loading ? "Processing..." : `Pay ৳${amount}`}
+      </button>
+      {message && <div className="text-center mt-2">{message}</div>}
+    </form>
+  );
+};
+
+// --- Main Parcel Table Component ---
+const ParcelTable = () => {
+  const [parcels, setParcels] = useState([]);
+  const [selectedParcel, setSelectedParcel] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  useEffect(() => {
+    fetchParcels();
+  }, []);
+
+  const fetchParcels = async () => {
+    try {
+      const res = await axios.get("http://localhost:3000/parcels");
+      setParcels(res.data);
+    } catch (error) {
+      console.error("Failed to fetch parcels:", error);
+    }
+  };
+
+  const openDetails = (parcel) => {
+    setSelectedParcel(parcel);
+    setShowDetailsModal(true);
+  };
+
+  const closeDetails = () => {
+    setSelectedParcel(null);
+    setShowDetailsModal(false);
+  };
+
+  const openPayment = (parcel) => {
+    setSelectedParcel(parcel);
+    setShowPaymentModal(true);
+  };
+
+  const closePayment = () => {
+    setSelectedParcel(null);
+    setShowPaymentModal(false);
+  };
+
+  const handleDelete = async (id) => {
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: "This parcel will be permanently deleted!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#22c55e",
+      cancelButtonColor: "#ef4444",
+      confirmButtonText: "Yes, delete it!",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const res = await axios.delete(`http://localhost:3000/parcels/${id}`);
+      if (res.data?.message === "Parcel deleted successfully") {
+        setParcels((prev) => prev.filter((parcel) => parcel._id !== id));
+        Swal.fire({
+          icon: "success",
+          title: "Deleted!",
+          text: "Your parcel has been deleted.",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      }
+    } catch (error) {
+      console.error("Delete failed:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Oops...",
+        text: "Failed to delete parcel. Please try again.",
+      });
+    }
+  };
+
+  return (
+    <div className="overflow-x-auto w-full p-4">
       <div className="max-w-7xl mx-auto shadow-lg rounded-xl border border-base-300 overflow-hidden">
         <h2 className="text-2xl md:text-3xl font-bold text-center text-lime-600 py-6 bg-base-100">
           📦 My Parcels
@@ -32,52 +169,62 @@ const ParcelTable = () => {
         <table className="table w-full text-sm md:text-base">
           <thead className="bg-lime-100 text-gray-700 text-center">
             <tr>
-              <th className="py-4 px-2">Tracking ID</th>
-              <th className="py-4 px-2">Title</th>
-              <th className="py-4 px-2">Type</th>
-              <th className="py-4 px-2">Sender</th>
-              <th className="py-4 px-2">Receiver</th>
-              <th className="py-4 px-2">Cost</th>
-              <th className="py-4 px-2">Status</th>
-              <th className="py-4 px-2">Actions</th>
+              <th>Tracking ID</th>
+              <th>Title</th>
+              <th>Type</th>
+              <th>Sender</th>
+              <th>Receiver</th>
+              <th>Cost</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {parcels.map((parcel, index) => (
-              <tr key={index} className="text-center hover:bg-base-100">
-                <td className="px-2 py-4 font-mono text-xs md:text-sm text-gray-600">
-                  {parcel.id}
-                </td>
-                <td className="px-2 py-4 font-medium">{parcel.title}</td>
-                <td className="px-2 py-4">{parcel.type}</td>
-                <td className="px-2 py-4">
-                  <div className="font-semibold text-gray-800">
-                    {parcel.sender.name}
+            {parcels.map((parcel) => (
+              <tr key={parcel._id} className="text-center hover:bg-base-100">
+                <td className="font-mono text-xs">{`PCL-${parcel._id.slice(-6).toUpperCase()}`}</td>
+                <td>{parcel.parcelName}</td>
+                <td className="capitalize">{parcel.parcelType}</td>
+                <td>
+                  <div className="font-semibold">{parcel.senderName}</div>
+                  <div className="text-xs text-gray-500">
+                    {parcel.senderWarehouse}, {parcel.senderRegion}
                   </div>
-                  <div className="text-xs text-gray-500">{parcel.sender.location}</div>
                 </td>
-                <td className="px-2 py-4">
-                  <div className="font-semibold text-gray-800">
-                    {parcel.receiver.name}
+                <td>
+                  <div className="font-semibold">{parcel.receiverName}</div>
+                  <div className="text-xs text-gray-500">
+                    {parcel.receiverWarehouse}, {parcel.receiverRegion}
                   </div>
-                  <div className="text-xs text-gray-500">{parcel.receiver.location}</div>
                 </td>
-                <td className="px-2 py-4 text-lime-600 font-semibold">
-                  ৳{parcel.cost}
+                <td className="text-lime-600 font-semibold">
+                  ৳{parcel.deliveryCost || "N/A"}
                 </td>
-                <td className="px-2 py-4">
+                <td>
                   <span className="badge badge-warning badge-outline font-semibold">
-                    {parcel.status}
+                    {parcel.status || "Unpaid"}
                   </span>
                 </td>
-                <td className="px-2 py-4 flex items-center justify-center gap-2">
-                  <button className="btn btn-sm btn-circle btn-info text-white tooltip" data-tip="Details">
+                <td className="flex items-center justify-center gap-2">
+                  <button
+                    className="btn btn-sm btn-circle btn-info text-white tooltip"
+                    data-tip="Details"
+                    onClick={() => openDetails(parcel)}
+                  >
                     <FaInfoCircle />
                   </button>
-                  <button className="btn btn-sm btn-circle btn-error text-white tooltip" data-tip="Delete">
+                  <button
+                    className="btn btn-sm btn-circle btn-error text-white tooltip"
+                    data-tip="Delete"
+                    onClick={() => handleDelete(parcel._id)}
+                  >
                     <FaTrash />
                   </button>
-                  <button className="btn btn-sm btn-circle btn-success text-white tooltip" data-tip="Pay">
+                  <button
+                    className="btn btn-sm btn-circle btn-success text-white tooltip"
+                    data-tip="Pay"
+                    onClick={() => openPayment(parcel)}
+                  >
                     <FaMoneyBill />
                   </button>
                 </td>
@@ -86,6 +233,82 @@ const ParcelTable = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Details Modal */}
+      {showDetailsModal && (
+        <dialog open className="modal">
+          <div className="modal-box max-w-2xl relative">
+            <button
+              onClick={closeDetails}
+              className="btn btn-sm btn-circle btn-error absolute top-4 right-4"
+            >
+              <FaTimes />
+            </button>
+            <h3 className="font-bold text-lg text-lime-700 mb-4">
+              📦 Parcel Details
+            </h3>
+            <div className="space-y-2 text-sm max-h-[60vh] overflow-y-auto">
+              <p>
+                <strong>Parcel Name:</strong> {selectedParcel.parcelName}
+              </p>
+              <p>
+                <strong>Parcel Type:</strong> {selectedParcel.parcelType}
+              </p>
+              <p>
+                <strong>Sender Name:</strong> {selectedParcel.senderName}
+              </p>
+              <p>
+                <strong>Sender Warehouse:</strong>{" "}
+                {selectedParcel.senderWarehouse}
+              </p>
+              <p>
+                <strong>Sender Address:</strong> {selectedParcel.senderAddress}
+              </p>
+              <p>
+                <strong>Receiver Name:</strong> {selectedParcel.receiverName}
+              </p>
+              <p>
+                <strong>Receiver Warehouse:</strong>{" "}
+                {selectedParcel.receiverWarehouse}
+              </p>
+              <p>
+                <strong>Receiver Address:</strong> {selectedParcel.receiverAddress}
+              </p>
+              <p>
+                <strong>Pickup Instruction:</strong>{" "}
+                {selectedParcel.pickupInstruction}
+              </p>
+              <p>
+                <strong>Delivery Instruction:</strong>{" "}
+                {selectedParcel.deliveryInstruction}
+              </p>
+              <p>
+                <strong>Weight:</strong> {selectedParcel.weight || "N/A"}
+              </p>
+            </div>
+          </div>
+        </dialog>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <dialog open className="modal">
+          <div className="modal-box max-w-md relative">
+            <button
+              onClick={closePayment}
+              className="btn btn-sm btn-circle btn-error absolute top-4 right-4"
+            >
+              <FaTimes />
+            </button>
+            <h3 className="font-bold text-lg text-lime-700 mb-4">
+              💳 Pay for Parcel: ৳{selectedParcel.deliveryCost || "N/A"}
+            </h3>
+            <Elements stripe={stripePromise}>
+              <CheckoutForm amount={selectedParcel.deliveryCost || 0} onClose={closePayment} />
+            </Elements>
+          </div>
+        </dialog>
+      )}
     </div>
   );
 };

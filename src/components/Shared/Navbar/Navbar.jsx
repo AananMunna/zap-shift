@@ -11,7 +11,8 @@ const navLinks = [
   { label: "Services", to: "/services" },
   { label: "Coverage", to: "/coverage" },
   { label: "About Us", to: "/about" },
-  { label: "Pricing", to: "/pricing" },
+  { label: "Add Parcel", to: "/pricing" },
+  { label: "Pricing", to: "/pricings" },
   { label: "Be a Rider", to: "/rider" },
   { label: "Dashboard", to: "/dashboard" },
 ];
